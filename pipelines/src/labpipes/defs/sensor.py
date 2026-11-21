@@ -1,7 +1,8 @@
 """S1: the ingest sensor (and the job it starts).
 
 Watches trips/ in the data bucket. When a month's file appears or its ETag changes, the month is added
-to the trip_months partitions and one run is requested for it, from trip_files through zone_hour_stats.
+to the trip_months partitions and one run is requested for it, from trip_files through zone_hour_stats
+and trip_features (S2).
 The blocking checks inside that run (schema_contract, then the stg_trips quality gates) stop whatever
 is downstream of them. taxi_zones is in the job so the first run has the zone names the mart joins.
 
@@ -18,8 +19,8 @@ from ..resources import DataBucket
 
 ingest_month = dg.define_asset_job(
     "ingest_month",
-    selection=dg.AssetSelection.assets("taxi_zones", "trip_files", "raw_trips", "stg_trips", "zone_hour_stats"),
-    description="One month: footer check, COPY, staging, quality gates, then the mart.",
+    selection=dg.AssetSelection.assets("taxi_zones", "trip_files", "raw_trips", "stg_trips", "zone_hour_stats", "trip_features"),
+    description="One month: footer check, COPY, staging, quality gates, the mart, then the model features.",
 )
 
 
