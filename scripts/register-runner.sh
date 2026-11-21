@@ -15,7 +15,7 @@
 set -euo pipefail
 export AWS_REGION=us-east-1 AWS_DEFAULT_REGION=us-east-1 AWS_PAGER=""
 
-RUNNER_VERSION="${RUNNER_VERSION:-2.329.0}" # pinned: bump deliberately
+RUNNER_VERSION="${RUNNER_VERSION:-2.338.2}" # pinned: bump deliberately
 LABEL=lab-app
 HERE="$(cd "$(dirname "$0")/.." && pwd)"
 
@@ -42,12 +42,13 @@ set -euo pipefail
 until [ -f /var/lib/lab-setup-done ]; do sleep 5; done
 cd /opt/actions-runner
 if [ -f .runner ]; then echo "already registered"; exit 0; fi
+find . -mindepth 1 -delete # a fresh install, never unpacked over an auto-updated one
 curl -fsSL -o runner.tgz "https://github.com/actions/runner/releases/download/v${VERSION}/actions-runner-linux-arm64-${VERSION}.tar.gz"
 echo "${SHA}  runner.tgz" | sha256sum -c -
 tar xzf runner.tgz && rm runner.tgz
 chown -R runner:runner /opt/actions-runner
 sudo -u runner ./config.sh --unattended --replace --url "https://github.com/${REPO}" \
-  --token "${TOKEN}" --name "${LABEL}" --labels "${LABEL}" --no-default-labels >/dev/null
+  --token "${TOKEN}" --name "${LABEL}" --labels "${LABEL}" >/dev/null
 ./svc.sh install runner
 ./svc.sh start
 echo "registered ${LABEL}"
