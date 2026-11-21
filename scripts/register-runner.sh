@@ -2,7 +2,7 @@
 # S0: register the app host as a self-hosted GitHub Actions runner with label lab-app
 # (contracts/runtime.yaml), so cd.yaml can deploy with the host's instance profile (decisions/002).
 #
-#   scripts/register-runner.sh
+#   scripts/register-runner.sh [app|platform|llm]     (default: app; the label is lab-<host>)
 #
 # Before running it: set Settings > Actions > General > "Require approval for all external
 # contributors" (the repo is public), and have AWS credentials in the environment and `gh` logged in.
@@ -16,12 +16,14 @@ set -euo pipefail
 export AWS_REGION=us-east-1 AWS_DEFAULT_REGION=us-east-1 AWS_PAGER=""
 
 RUNNER_VERSION="${RUNNER_VERSION:-2.338.2}" # pinned: bump deliberately
-LABEL=lab-app
+ROLE="${1:-app}"
+[[ "$ROLE" =~ ^(app|platform|llm)$ ]] || { echo "usage: $0 [app|platform|llm]" >&2; exit 1; }
+LABEL="lab-$ROLE" # runner_label in contracts/runtime.yaml
 HERE="$(cd "$(dirname "$0")/.." && pwd)"
 
 repo=$(gh repo view --json nameWithOwner -q .nameWithOwner)
-instance=$(terraform -chdir="$HERE/infra/live" output -raw app_instance_id) ||
-  { echo "no app_instance_id output: has terraform apply run?" >&2; exit 1; }
+instance=$(terraform -chdir="$HERE/infra/live" output -raw "${ROLE}_instance_id") ||
+  { echo "no ${ROLE}_instance_id output: has terraform apply run?" >&2; exit 1; }
 
 # Hash of the runner tarball from the release itself, so the host verifies what it downloads.
 asset="actions-runner-linux-arm64-${RUNNER_VERSION}.tar.gz"
