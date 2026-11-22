@@ -23,3 +23,8 @@ output "rds_endpoint" {
 output "artifact_bucket" {
   value = module.artifact_bucket.name
 }
+
+# S3: serving's MLFLOW_TRACKING_URI is built from it (stages/S3.md).
+output "platform_private_ip" {
+  value = module.platform.private_ip
+}

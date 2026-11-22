@@ -1,0 +1,33 @@
+# App rollback without a deploy: send traffic back to the other colour, which is still running the
+# previous version (deploy/web.sh switch). Manual, in the `production` environment so it waits for you.
+# Push-triggered workflows never reach it, and workflow_dispatch needs write access to the repository.
+name: rollback
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-app
+  cancel-in-progress: false
+
+jobs:
+  rollback:
+    runs-on: [self-hosted, lab-app]
+    environment: production
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - name: Switch to the other colour
+        run: |
+          live=$(deploy/web.sh live)
+          other=$([[ "$live" == blue ]] && echo green || echo blue)
+          [[ "$(deploy/web.sh tag "$other")" != none ]] || { echo "$other isn't running: nothing to roll back to" >&2; exit 1; }
+          start=$(date +%s)
+          deploy/web.sh smoke "$other"
+          deploy/web.sh switch "$other"
+          curl -fsS --retry 10 --retry-all-errors --retry-delay 1 http://127.0.0.1/version
+          echo
+          echo "rolled back $live -> $other in $(( $(date +%s) - start )) s"
+          deploy/web.sh status

@@ -1,0 +1,105 @@
+# Promotion (S3): make a model version the `champion` that serving answers with. Manual, and it waits for
+# a reviewer in the `production` environment before any step runs. This workflow is the only thing that
+# moves `champion` (contracts/mlflow.yaml); the pipeline moves `challenger` behind its gate.
+#
+#   gh workflow run promote.yaml                    # promote the current challenger
+#   gh workflow run promote.yaml -f version=3       # or a version you name
+#
+# Runs on the app host's runner (instance profile, and the host can reach MLflow and serving). The MLflow
+# calls run inside the serving container, which already has the pinned client and MLFLOW_TRACKING_URI.
+# The outgoing champion is recorded on the new version as the `previous_champion` tag, so a model
+# rollback knows where to go back to (S8).
+name: promote
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Model version to promote (default is the version `challenger` points at)
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  group: promote
+  cancel-in-progress: false
+
+jobs:
+  promote:
+    runs-on: [self-hosted, lab-app]
+    environment: production
+    timeout-minutes: 15
+    env:
+      MODEL_NAME: trip-duration
+      REQUESTED: ${{ inputs.version }}
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - name: Check the version and move champion
+        id: promote
+        run: |
+          # The facts every evaluated version carries (contracts/mlflow.yaml).
+          required=$(awk '/^version_tags:/{f=1;next} /^[a-z]/{f=0} f&&/^  - /{print $2}' contracts/mlflow.yaml | paste -sd,)
+          [[ -n "$required" ]] || { echo "could not read version_tags from contracts/mlflow.yaml" >&2; exit 1; }
+          docker exec -i -e MODEL_NAME -e REQUESTED -e REQUIRED="$required" lab-serving-serving-champion-1 python - <<'PY' | tee result.txt
+          import os
+          from mlflow import MlflowClient
+          from mlflow.exceptions import MlflowException
+
+          name, requested = os.environ["MODEL_NAME"], os.environ["REQUESTED"].strip()
+          client = MlflowClient()
+
+          def alias(a):
+              try:
+                  return client.get_model_version_by_alias(name, a)
+              except MlflowException:
+                  return None
+
+          if requested:
+              if not requested.isdigit():
+                  raise SystemExit(f"version must be a number, got {requested!r}")
+              target = client.get_model_version(name, requested)
+          else:
+              target = alias("challenger")
+              if target is None:
+                  raise SystemExit("no challenger to promote: the pipeline hasn't set one")
+
+          missing = [t for t in os.environ["REQUIRED"].split(",") if t not in target.tags]
+          if missing:
+              raise SystemExit(f"version {target.version} was not evaluated by the pipeline: missing tags {missing}")
+
+          outgoing = alias("champion")
+          if outgoing is not None and outgoing.version == target.version:
+              raise SystemExit(f"version {target.version} is already the champion")
+          client.set_model_version_tag(name, target.version, "previous_champion", outgoing.version if outgoing else "none")
+          client.set_registered_model_alias(name, "champion", target.version)
+          print(f"promoted={target.version}")
+          print(f"outgoing={outgoing.version if outgoing else 'none'}")
+          PY
+          echo "version=$(sed -n 's/^promoted=//p' result.txt)" >> "$GITHUB_OUTPUT"
+          echo "outgoing=$(sed -n 's/^outgoing=//p' result.txt)" >> "$GITHUB_OUTPUT"
+      - name: Make serving use it
+        run: deploy/web.sh reload champion
+      - name: Check /predict answers with the new champion
+        env:
+          VERSION: ${{ steps.promote.outputs.version }}
+        run: |
+          # Traefik's health check on serving-champion runs every 5 s, so allow it a moment.
+          for _ in $(seq 1 12); do
+            out=$(curl -fsS -H 'Content-Type: application/json' http://127.0.0.1/predict \
+              -d '{"pickup_zone_id": 132, "dropoff_zone_id": 230, "pickup_datetime": "2024-03-08T17:05:00"}' || true)
+            if jq -e --arg v "$VERSION" '.model.alias == "champion" and .model.version == $v' <<<"${out:-null}" >/dev/null 2>&1; then
+              echo "$out"; exit 0
+            fi
+            sleep 5
+          done
+          echo "the app is not answering with champion v$VERSION; last answer: ${out:-none}" >&2
+          exit 1
+      - name: Summary
+        if: success()
+        run: |
+          {
+            echo "### Promoted trip-duration v${{ steps.promote.outputs.version }} to champion"
+            echo "Outgoing champion: v${{ steps.promote.outputs.outgoing }} (tag \`previous_champion\` on the new version)"
+          } >> "$GITHUB_STEP_SUMMARY"
