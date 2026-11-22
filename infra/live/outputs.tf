@@ -28,3 +28,8 @@ output "artifact_bucket" {
 output "platform_private_ip" {
   value = module.platform.private_ip
 }
+
+# S6: the app and the platform's embed resource reach llama.cpp on this address (stages/S6.md).
+output "llm_private_ip" {
+  value = module.llm.private_ip
+}

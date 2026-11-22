@@ -31,6 +31,8 @@ jobs:
     env:
       IMAGE_TAG: ${{ github.event.workflow_run.head_sha }}
       HTTP_PORT: "80"
+      # S6: the app reaches llama.cpp on the LLM host (empty until LLM_HOST is set: /assist answers 503).
+      LLM_HOST: ${{ vars.LLM_HOST }}
     steps:
       - uses: actions/checkout@v7.0.1
         with:
