@@ -26,8 +26,19 @@ jobs:
           [[ "$(deploy/web.sh tag "$other")" != none ]] || { echo "$other isn't running: nothing to roll back to" >&2; exit 1; }
           start=$(date +%s)
           deploy/web.sh smoke "$other"
+          want=$(deploy/web.sh status | jq -r --arg c "$other" '.git_shas[$c]')
           deploy/web.sh switch "$other"
-          curl -fsS --retry 10 --retry-all-errors --retry-delay 1 http://127.0.0.1/version
-          echo
-          echo "rolled back $live -> $other in $(( $(date +%s) - start )) s"
-          deploy/web.sh status
+          # The clock stops when the live route answers with the other colour's commit, not when the
+          # switch command returns: Traefik picks up the new weights a moment later.
+          for _ in $(seq 1 60); do
+            out=$(curl -fsS http://127.0.0.1/version || true)
+            if jq -e --arg sha "$want" '.git_sha == $sha' <<<"${out:-null}" >/dev/null 2>&1; then
+              echo "$out"
+              echo "rolled back $live -> $other in $(( $(date +%s) - start )) s, until the live route answered with it"
+              deploy/web.sh status
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "live route answers ${out:-nothing}, expected $want" >&2
+          exit 1
