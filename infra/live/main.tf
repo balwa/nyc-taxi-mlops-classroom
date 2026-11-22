@@ -59,3 +59,9 @@ module "wiki_secret" {
   name        = "lab/wiki"
   description = "Wiki URL and token for the MCP server (S7). Value is put out of band."
 }
+
+module "grafana_secret" {
+  source      = "../modules/secret"
+  name        = "lab/grafana"
+  description = "Grafana Cloud remote-write URL, user and token for Alloy (S5). Value is put out of band."
+}
