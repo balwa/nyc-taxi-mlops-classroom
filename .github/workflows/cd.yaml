@@ -54,10 +54,13 @@ jobs:
           echo "idle=$idle" >> "$GITHUB_OUTPUT"
           # The live colour keeps the tag it runs; only the idle one moves to this commit.
           if [[ "$idle" == blue ]]; then
-            export BLUE_TAG="$IMAGE_TAG" GREEN_TAG="$(deploy/web.sh tag green)"
+            BLUE_TAG="$IMAGE_TAG"
+            GREEN_TAG=$(deploy/web.sh tag green)
           else
-            export GREEN_TAG="$IMAGE_TAG" BLUE_TAG="$(deploy/web.sh tag blue)"
+            GREEN_TAG="$IMAGE_TAG"
+            BLUE_TAG=$(deploy/web.sh tag blue)
           fi
+          export BLUE_TAG GREEN_TAG
           docker compose -f deploy/compose.web.yaml pull "app-$idle"
           docker compose -f deploy/compose.web.yaml up -d --wait --remove-orphans "app-$idle"
       - name: Check the idle colour (decisions/011)
@@ -66,7 +69,7 @@ jobs:
         run: |
           deploy/web.sh smoke "$IDLE" "$IMAGE_TAG"
           # Ten more quotes pinned to the idle colour: every one must be a 200 with a positive duration.
-          for i in $(seq 1 10); do
+          for _ in $(seq 1 10); do
             curl -fsS -H "X-Lab-Color: $IDLE" -H 'Content-Type: application/json' http://127.0.0.1/predict \
               -d '{"pickup_zone_id": 132, "dropoff_zone_id": 230, "pickup_datetime": "2024-03-08T17:05:00"}' |
               jq -e '.duration_minutes > 0' >/dev/null
