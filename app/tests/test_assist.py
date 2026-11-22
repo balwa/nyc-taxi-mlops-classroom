@@ -1,6 +1,7 @@
 """POST /assist (contracts/assistant-openapi.yaml): 503 until configured, then the contract's shape, with
 the LLM host and the vector store replaced by fakes. Works before and after S6's retrieval is built."""
 
+import asyncio
 from pathlib import Path
 
 import pytest
@@ -99,3 +100,64 @@ def test_tracing_when_configured(fake_llm, monkeypatch, tmp_path):
     assert all(s["parentSpanId"] == root["spanId"] for s in spans[:-1])
     assert attrs[1]["gen_ai.usage.input_tokens"] == "300" and attrs[1]["gen_ai.usage.output_tokens"] == "9"
     assert attrs[2]["langfuse.trace.name"] == "assist" and "Harbor Line" in attrs[2]["langfuse.observation.input"]
+
+
+def chunk(i: int, title: str = "Harbor Line surcharge") -> a.Chunk:
+    return a.Chunk(id=f"c{i}", page_id="harbor-line", title=title, content=f"{title} > Pricing\n\nexcerpt {i}", score=0.8)
+
+
+def test_prompt_puts_the_excerpts_in_the_user_turn_and_keeps_the_system_prompt_fixed():
+    one = a.build_messages("How much?", [chunk(1)])
+    two = a.build_messages("Something else?", [chunk(2), chunk(3, "Quiet Hours dispatch")])
+    assert one[0] == two[0] == {"role": "system", "content": a.WIKI_SYSTEM_PROMPT}  # same prefix: llama.cpp can cache it
+    user = two[1]["content"]
+    assert user.index("[1] (wiki page: Harbor Line surcharge)") < user.index("[2] (wiki page: Quiet Hours dispatch)") < user.index("Question: Something else?")
+    assert "excerpt 2" in user and "excerpt 3" in user and "excerpt 1" not in user and "excerpt 1" in one[1]["content"]
+
+
+def test_without_excerpts_the_prompt_is_the_plain_one():
+    assert a.build_messages("How much?", []) == [{"role": "system", "content": a.SYSTEM_PROMPT}, {"role": "user", "content": "How much?"}]
+
+
+class FakeCursor:
+    def __init__(self, rows, seen):
+        self.rows, self.seen = rows, seen
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *exc):
+        return False
+
+    async def execute(self, sql, params):
+        self.seen["sql"], self.seen["params"] = sql, params
+
+    async def fetchall(self):
+        return self.rows
+
+
+class FakeConn:
+    def __init__(self, rows, seen):
+        self.rows, self.seen = rows, seen
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *exc):
+        return False
+
+    def cursor(self):
+        return FakeCursor(self.rows, self.seen)
+
+
+def test_retrieve_asks_for_the_top_k_nearest_by_cosine_distance(monkeypatch):
+    seen = {}
+
+    async def connect():
+        return FakeConn([("c1", "harbor-line", "Harbor Line surcharge", "text", 0.83)], seen)
+
+    monkeypatch.setattr(a, "connect", connect)
+    chunks = asyncio.run(a.retrieve([0.5] * 768))
+    assert chunks == [a.Chunk(id="c1", page_id="harbor-line", title="Harbor Line surcharge", content="text", score=0.83)]
+    assert "<=>" in seen["sql"] and "embedding is not null" in seen["sql"] and "order by" in seen["sql"]
+    assert seen["params"][0] == seen["params"][1] == a.vector_literal([0.5] * 768) and seen["params"][2] == a.TOP_K == 3

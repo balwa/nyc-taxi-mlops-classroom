@@ -10,8 +10,8 @@
 - ingest_wiki: the job for the three (scripts/dagster-run.sh ingest_wiki --wait) and its daily schedule.
 The logic is in labpipes/ragsync.py, so tests can run it with fakes.
 
-Open decisions: chunk size and overlap (015) and the vector index, HNSW or IVFFlat (016). The two numbers
-below are provisional until the evaluation (scripts/rag-eval.py) has been read and 015 is written.
+Chunk size and overlap are decision 015 (evidence: scripts/rag-eval.py). The vector index, HNSW or IVFFlat,
+is decision 016 and not created yet.
 """
 
 import dagster as dg
@@ -19,8 +19,8 @@ import dagster as dg
 from ..ragsync import PgStore, embed_missing, sync_chunks, sync_pages
 from ..resources import LlmEmbed, RagStore, WikiApi
 
-MAX_TOKENS = 200  # provisional, decision 015
-OVERLAP_TOKENS = 40  # provisional, decision 015
+MAX_TOKENS = 100  # decision 015
+OVERLAP_TOKENS = 20  # decision 015
 
 
 def _int(n: int) -> dg.MetadataValue:
