@@ -12,7 +12,27 @@ declare "host" {
 	prometheus.relabel "rules" {
 		forward_to = argument.forward_to.value
 
-		// Your rules for the host's series: CPU? memory? disk? which network devices?
+		// Option B (decision 014): CPU idle, memory total and available, and the root filesystem. No
+		// network, no per-device disk, no node_exporter bookkeeping.
+		rule {
+			source_labels = ["__name__"]
+			regex         = "up|node_cpu_seconds_total|node_memory_MemTotal_bytes|node_memory_MemAvailable_bytes|node_filesystem_(avail|size)_bytes"
+			action        = "keep"
+		}
+
+		// Only the idle mode of CPU time; the others add up to 1 minus idle.
+		rule {
+			source_labels = ["__name__", "mode"]
+			regex         = "node_cpu_seconds_total;(?:iowait|irq|nice|softirq|steal|system|user)"
+			action        = "drop"
+		}
+
+		// Only the root filesystem (mountpoint "/"): any other mountpoint, longer than one character, is dropped.
+		rule {
+			source_labels = ["__name__", "mountpoint"]
+			regex         = "node_filesystem_.+;(.{2,}|[^/])"
+			action        = "drop"
+		}
 	}
 
 	export "receiver" {
@@ -26,7 +46,20 @@ declare "containers" {
 	prometheus.relabel "rules" {
 		forward_to = argument.forward_to.value
 
-		// Your rules for the containers' series: which metrics, and which labels change on every deploy?
+		// Option B (decision 014): CPU, working-set memory and last-seen per container. No disk, network
+		// or spec series.
+		rule {
+			source_labels = ["__name__"]
+			regex         = "up|container_cpu_usage_seconds_total|container_memory_working_set_bytes|container_last_seen"
+			action        = "keep"
+		}
+
+		// Labels that change on every deploy (cgroup id, image tag = commit SHA, Compose's config hash and
+		// replace labels): dropped, so a redeploy continues the same series. "name" still tells containers apart.
+		rule {
+			regex  = "id|image|container_label_.*"
+			action = "labeldrop"
+		}
 	}
 
 	export "receiver" {
@@ -40,7 +73,14 @@ declare "services" {
 	prometheus.relabel "rules" {
 		forward_to = argument.forward_to.value
 
-		// Your rules for the services' series (contracts/metrics.yaml, Traefik, runtime metrics).
+		// Option B (decision 014): everything in contracts/metrics.yaml and Traefik's per-service series
+		// stay. Dropped: Traefik's entrypoint series, and the runtime metrics (process_*, python_*) and
+		// scrape_* bookkeeping that nothing reads.
+		rule {
+			source_labels = ["__name__"]
+			regex         = "traefik_entrypoint_.*|process_.*|python_.*|scrape_.*"
+			action        = "drop"
+		}
 	}
 
 	export "receiver" {
