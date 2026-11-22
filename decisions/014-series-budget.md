@@ -7,7 +7,7 @@ Stage: S5 · Date: 2026-11-22 · Author: Tanmay Balwa · Drafted by agent: yes
 Keep the minimum from each source and drop the rest, in `observability/alloy/budget.alloy`:
 - **Host:** `up`, CPU idle time, memory total and available, and the `/` filesystem's size and free space. No network, per-device disk or node_exporter bookkeeping.
 - **Containers:** CPU usage, working-set memory and last-seen per container. The labels `id`, `image` and every `container_label_*` are dropped, so a redeploy continues the same series.
-- **Services:** everything in `contracts/metrics.yaml` and Traefik's per-service series. Dropped: Traefik's entrypoint series, and `process_*`, `python_*` and `scrape_*`.
+- **Services:** everything in `contracts/metrics.yaml` and Traefik's per-service series, plus `traefik_entrypoint_requests_total`, the availability SLI's source (added after the first break test: when the app is down Traefik answers 503 itself, and only the entrypoint counts it). Dropped: Traefik's other entrypoint series, and `process_*`, `python_*` and `scrape_*`.
 
 Scrape intervals stay at 15 s and 30 s.
 

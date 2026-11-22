@@ -74,11 +74,12 @@ declare "services" {
 		forward_to = argument.forward_to.value
 
 		// Option B (decision 014): everything in contracts/metrics.yaml and Traefik's per-service series
-		// stay. Dropped: Traefik's entrypoint series, and the runtime metrics (process_*, python_*) and
-		// scrape_* bookkeeping that nothing reads.
+		// stay, plus traefik_entrypoint_requests_total (the availability SLI: it counts the 503s Traefik answers
+		// itself when the app is down). Dropped: Traefik's other entrypoint series, and the runtime metrics
+		// (process_*, python_*) and scrape_* bookkeeping that nothing reads.
 		rule {
 			source_labels = ["__name__"]
-			regex         = "traefik_entrypoint_.*|process_.*|python_.*|scrape_.*"
+			regex         = "traefik_entrypoint_(request_duration_seconds_.*|requests_bytes_total|responses_bytes_total|requests_tls_total|open_connections)|process_.*|python_.*|scrape_.*"
 			action        = "drop"
 		}
 	}

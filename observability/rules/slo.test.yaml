@@ -5,13 +5,13 @@ rule_files:
 evaluation_interval: 1m
 
 tests:
-  # An outage pages: from minute 30 every request fails with 502.
+  # An outage pages: from minute 30 every request fails with 503 (Traefik's own answer when the app is down).
   - name: availability outage pages
     interval: 1m
     input_series:
-      - series: 'traefik_service_requests_total{service="app-blue@file", code="200"}'
+      - series: 'traefik_entrypoint_requests_total{entrypoint="web", code="200"}'
         values: '0+600x30 18000+0x90'
-      - series: 'traefik_service_requests_total{service="app-blue@file", code="502"}'
+      - series: 'traefik_entrypoint_requests_total{entrypoint="web", code="503"}'
         values: '0x30 600+600x89'
     alert_rule_test:
       - eval_time: 29m
@@ -24,15 +24,15 @@ tests:
               severity: page
               slo: predict-availability
             exp_annotations:
-              summary: "The app's 5xx ratio is burning the 99.9% availability budget at 14.4x or faster (30 min and 5 min)."
+              summary: "The 5xx ratio riders see is burning the 99.9% availability budget at 14.4x or faster (30 min and 5 min)."
 
   # A short spike doesn't page: 100 failures at once (10 seconds of outage) is 0.55% of 30 minutes.
   - name: availability short spike does not page
     interval: 1m
     input_series:
-      - series: 'traefik_service_requests_total{service="app-blue@file", code="200"}'
+      - series: 'traefik_entrypoint_requests_total{entrypoint="web", code="200"}'
         values: '0+600x120'
-      - series: 'traefik_service_requests_total{service="app-blue@file", code="502"}'
+      - series: 'traefik_entrypoint_requests_total{entrypoint="web", code="503"}'
         values: '0x40 100x80'
     alert_rule_test:
       - eval_time: 42m
@@ -46,9 +46,9 @@ tests:
   - name: availability ignores 422
     interval: 1m
     input_series:
-      - series: 'traefik_service_requests_total{service="app-blue@file", code="200"}'
+      - series: 'traefik_entrypoint_requests_total{entrypoint="web", code="200"}'
         values: '0+600x120'
-      - series: 'traefik_service_requests_total{service="app-blue@file", code="422"}'
+      - series: 'traefik_entrypoint_requests_total{entrypoint="web", code="422"}'
         values: '0+600x120'
     alert_rule_test:
       - eval_time: 60m
@@ -59,9 +59,9 @@ tests:
   - name: availability idle system does not page
     interval: 1m
     input_series:
-      - series: 'traefik_service_requests_total{service="app-blue@file", code="200"}'
+      - series: 'traefik_entrypoint_requests_total{entrypoint="web", code="200"}'
         values: '0x120'
-      - series: 'traefik_service_requests_total{service="app-blue@file", code="502"}'
+      - series: 'traefik_entrypoint_requests_total{entrypoint="web", code="503"}'
         values: '0x59 1x60'
     alert_rule_test:
       - eval_time: 60m

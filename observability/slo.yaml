@@ -4,9 +4,9 @@
 slos:
   - name: predict-availability
     sli: >-
-      Requests Traefik sent to the app (traefik_service_requests_total, service app-blue or app-green)
-      that were not 5xx, out of all of them except 422s. Measured at Traefik, not in the app, because a
-      stopped container reports nothing itself.
+      Responses riders get on Traefik's public entrypoint (traefik_entrypoint_requests_total, entrypoint
+      web) that were not 5xx, out of all of them except 422s. Measured at the entrypoint, not in the app
+      or per service: a stopped app reports nothing, and Traefik's own 503 for a dead backend is counted only here.
     objective: 99.9% over 30 days (error budget 0.1%, about 43 minutes of full outage)
     why: >-
       The SLA is 99.5%, so the SLO is stricter to leave room to react before the SLA is at risk.
