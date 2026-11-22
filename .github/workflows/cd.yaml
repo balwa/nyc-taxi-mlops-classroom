@@ -80,7 +80,14 @@ jobs:
           IDLE: ${{ steps.colour.outputs.idle }}
         run: |
           deploy/web.sh switch "$IDLE"
-          out=$(curl -fsS --retry 10 --retry-all-errors --retry-delay 3 http://127.0.0.1/version)
-          echo "$out"
-          echo "$out" | jq -e --arg sha "$IMAGE_TAG" '.git_sha == $sha'
+          # Traefik picks up the new weights from its file a moment after the switch, so poll for the SHA.
+          for _ in $(seq 1 15); do
+            out=$(curl -fsS http://127.0.0.1/version || true)
+            if jq -e --arg sha "$IMAGE_TAG" '.git_sha == $sha' <<<"${out:-null}" >/dev/null 2>&1; then
+              echo "$out"; break
+            fi
+            sleep 2
+          done
+          jq -e --arg sha "$IMAGE_TAG" '.git_sha == $sha' <<<"${out:-null}" >/dev/null ||
+            { echo "live route answers ${out:-nothing}, expected $IMAGE_TAG" >&2; exit 1; }
           deploy/web.sh status
