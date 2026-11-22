@@ -1,0 +1,57 @@
+# Test questions for retrieval (S6, decision 015). Each has the wiki pages that hold the answer
+# (page ids from the wiki's /pages). scripts/rag-eval.py asks the embedding model for each question's
+# nearest chunks and reports how often a right page is in the top k.
+#
+# `expected` is any of these pages (a hit is a right page in the top k). `all: true` means the answer
+# needs every listed page, so a hit needs all of them. Written from the wiki as of 2026-11-22: if a page
+# changes, re-read this file.
+questions:
+  - id: jfk-buffer
+    question: Why does my quoted ETA from JFK include 7 extra minutes?
+    expected: [airport-buffer]
+  - id: harbor-amount
+    question: How much is the Harbor Line surcharge and where does it apply?
+    expected: [harbor-line]
+  - id: harbor-code
+    question: What does the HL3 code on a trip receipt mean?
+    expected: [harbor-line, glossary]
+  - id: lost-fee
+    question: What does a lost-item return cost across boroughs, and how long do riders have to ask for one?
+    expected: [lost-items]
+  - id: surge-cap
+    question: When are surge multipliers capped at 1.6x?
+    expected: [surge-cap]
+  - id: night-eta
+    question: Why are pickup times quoted differently at 2am?
+    expected: [quiet-hours]
+  - id: driver-break
+    question: What happens to a driver who has been online for ten hours?
+    expected: [driver-rest]
+  - id: corridor
+    question: Why is my ETA 12 percent higher near Times Square on weekday evenings?
+    expected: [blue-corridor]
+  - id: credit
+    question: When should support give a rider an ETA credit?
+    expected: [eta-complaints]
+  - id: eta-owner
+    question: Who owns the ETA prediction model?
+    expected: [how-etas-are-computed, oncall]
+  - id: page-whom
+    question: Who do I page when ETA predictions are wrong or missing?
+    expected: [oncall, how-etas-are-computed]
+  - id: crz
+    question: What is the congestion relief zone toll and who pays it?
+    expected: [congestion-pricing, tlc-surcharges]
+  - id: rush-fee
+    question: What is the weekday rush hour surcharge?
+    expected: [tlc-surcharges]
+  - id: flat-fare-buffer
+    question: Does a flat-fare JFK trip still get the curb buffer in its ETA?
+    expected: [tlc-airports, airport-buffer]
+    all: true
+  - id: quote-rounding
+    question: How is the quoted ETA rounded, and when is it shown as a range?
+    expected: [eta-quoting]
+  - id: eta-changed
+    question: Why did my ETA change after I booked the ride?
+    expected: [rider-faq]
