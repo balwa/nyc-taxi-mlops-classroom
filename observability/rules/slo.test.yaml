@@ -1,0 +1,110 @@
+# Unit tests for slo.rules.yaml (promtool). Traffic is 10 requests/s, one sample per minute (+600).
+# 14.4x on a 99.9% objective is 1.44%: 259 failures out of 18,000 requests in 30 minutes.
+rule_files:
+  - slo.rules.yaml
+evaluation_interval: 1m
+
+tests:
+  # An outage pages: from minute 30 every request fails with 502.
+  - name: availability outage pages
+    interval: 1m
+    input_series:
+      - series: 'traefik_service_requests_total{service="app-blue@file", code="200"}'
+        values: '0+600x30 18000+0x90'
+      - series: 'traefik_service_requests_total{service="app-blue@file", code="502"}'
+        values: '0x30 600+600x89'
+    alert_rule_test:
+      - eval_time: 29m
+        alertname: PredictAvailabilityFastBurn
+        exp_alerts: []
+      - eval_time: 45m
+        alertname: PredictAvailabilityFastBurn
+        exp_alerts:
+          - exp_labels:
+              severity: page
+              slo: predict-availability
+            exp_annotations:
+              summary: "The app's 5xx ratio is burning the 99.9% availability budget at 14.4x or faster (30 min and 5 min)."
+
+  # A short spike doesn't page: 100 failures at once (10 seconds of outage) is 0.55% of 30 minutes.
+  - name: availability short spike does not page
+    interval: 1m
+    input_series:
+      - series: 'traefik_service_requests_total{service="app-blue@file", code="200"}'
+        values: '0+600x120'
+      - series: 'traefik_service_requests_total{service="app-blue@file", code="502"}'
+        values: '0x40 100x80'
+    alert_rule_test:
+      - eval_time: 42m
+        alertname: PredictAvailabilityFastBurn
+        exp_alerts: []
+      - eval_time: 60m
+        alertname: PredictAvailabilityFastBurn
+        exp_alerts: []
+
+  # 422s are the rider's mistake: all of them, still no page.
+  - name: availability ignores 422
+    interval: 1m
+    input_series:
+      - series: 'traefik_service_requests_total{service="app-blue@file", code="200"}'
+        values: '0+600x120'
+      - series: 'traefik_service_requests_total{service="app-blue@file", code="422"}'
+        values: '0+600x120'
+    alert_rule_test:
+      - eval_time: 60m
+        alertname: PredictAvailabilityFastBurn
+        exp_alerts: []
+
+  # One failed request on an idle system is under the traffic floor.
+  - name: availability idle system does not page
+    interval: 1m
+    input_series:
+      - series: 'traefik_service_requests_total{service="app-blue@file", code="200"}'
+        values: '0x120'
+      - series: 'traefik_service_requests_total{service="app-blue@file", code="502"}'
+        values: '0x59 1x60'
+    alert_rule_test:
+      - eval_time: 60m
+        alertname: PredictAvailabilityFastBurn
+        exp_alerts: []
+
+  # Slow requests page: from minute 30 nothing is answered inside 100 ms.
+  - name: latency slowdown pages
+    interval: 1m
+    input_series:
+      - series: 'lab_http_request_duration_seconds_count{route="/predict"}'
+        values: '0+600x120'
+      - series: 'lab_http_request_duration_seconds_bucket{route="/predict", le="0.1"}'
+        values: '0+600x30 18000+0x89'
+      - series: 'lab_http_request_duration_seconds_bucket{route="/predict", le="+Inf"}'
+        values: '0+600x120'
+    alert_rule_test:
+      - eval_time: 29m
+        alertname: PredictLatencyFastBurn
+        exp_alerts: []
+      - eval_time: 45m
+        alertname: PredictLatencyFastBurn
+        exp_alerts:
+          - exp_labels:
+              severity: page
+              slo: predict-latency
+            exp_annotations:
+              summary: "Too many /predict requests take over 100 ms: the 99.9% latency budget is burning at 14.4x or faster (30 min and 5 min)."
+
+  # A short spike doesn't page: 100 slow requests at once.
+  - name: latency short spike does not page
+    interval: 1m
+    input_series:
+      - series: 'lab_http_request_duration_seconds_count{route="/predict"}'
+        values: '0+600x120'
+      - series: 'lab_http_request_duration_seconds_bucket{route="/predict", le="0.1"}'
+        values: '0+600x40 24500+600x79'
+      - series: 'lab_http_request_duration_seconds_bucket{route="/predict", le="+Inf"}'
+        values: '0+600x120'
+    alert_rule_test:
+      - eval_time: 42m
+        alertname: PredictLatencyFastBurn
+        exp_alerts: []
+      - eval_time: 60m
+        alertname: PredictLatencyFastBurn
+        exp_alerts: []

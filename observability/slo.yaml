@@ -3,7 +3,29 @@
 # number, and the alert that tells you it's being missed.
 slos:
   - name: predict-availability
-    sli:
-    objective:
-    why:
-    alert:
+    sli: >-
+      Requests Traefik sent to the app (traefik_service_requests_total, service app-blue or app-green)
+      that were not 5xx, out of all of them except 422s. Measured at Traefik, not in the app, because a
+      stopped container reports nothing itself.
+    objective: 99.9% over 30 days (error budget 0.1%, about 43 minutes of full outage)
+    why: >-
+      The SLA is 99.5%, so the SLO is stricter to leave room to react before the SLA is at risk.
+      422s are excluded: an invalid zone is the rider's mistake and the app is right to refuse it.
+      Known gap: when serving is down the app still answers 200 with the fallback quote, so this SLO
+      does not see it (observed 2026-11-22: 2.5 minutes, over half of 10 minutes of quotes from the fallback).
+    alert: >-
+      PredictAvailabilityFastBurn: error ratio above 14.4x the budget (1.44%) over both 30 minutes and
+      5 minutes, with at least 10 requests in the 30 minutes.
+
+  - name: predict-latency
+    sli: >-
+      /predict requests answered in 100 ms or less, out of all /predict requests
+      (lab_http_request_duration_seconds, le="0.1"). Measured inside the app, so it leaves out the network.
+    objective: 99.9% over 30 days
+    why: >-
+      Same objective as availability, above the 99.5% SLA. 100 ms is about twice the p99 measured at
+      50 requests/s on 2026-11-22 (p95 24 ms, p99 55 ms): enough room for a busy host, tight enough
+      that a real slowdown burns the budget. The fallback answers quickly, so a serving outage looks fine here.
+    alert: >-
+      PredictLatencyFastBurn: share of slow requests above 14.4x the budget (1.44%) over both 30 minutes
+      and 5 minutes, with at least 10 requests in the 30 minutes.

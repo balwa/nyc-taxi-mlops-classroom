@@ -2,4 +2,61 @@
 # Prometheus rule format: https://prometheus.io/docs/prometheus/latest/configuration/recording_rules/
 # Metric names are contracts/metrics.yaml's. `make check` runs promtool on this file and on any
 # *.test.yaml next to it.
-groups: []
+#
+# Two SLOs, both 99.9% over 30 days, so the error budget is 0.1% (slo.yaml says why):
+#   availability: Traefik's requests to the app that are not 5xx, 422s left out. Measured at Traefik because
+#                 the app can't report its own death: a stopped container leaves no app metrics at all.
+#   latency:      /predict requests answered in 100 ms or less, measured inside the app.
+# Alerts page when the error ratio burns the budget at 14.4x or faster over both 30 minutes and 5 minutes.
+# 14.4 x 0.1% = 1.44%. The traffic floor (10 requests in 30 minutes) stops one failed request on an idle
+# system from paging.
+groups:
+  - name: slo-availability
+    rules:
+      - record: lab:predict_availability:requests:rate5m
+        expr: sum(rate(traefik_service_requests_total{service=~"app-(blue|green)@file", code!="422"}[5m]))
+      - record: lab:predict_availability:requests:rate30m
+        expr: sum(rate(traefik_service_requests_total{service=~"app-(blue|green)@file", code!="422"}[30m]))
+      - record: lab:predict_availability:error_ratio:rate5m
+        expr: |
+          (sum(rate(traefik_service_requests_total{service=~"app-(blue|green)@file", code=~"5.."}[5m])) or vector(0))
+          / lab:predict_availability:requests:rate5m
+      - record: lab:predict_availability:error_ratio:rate30m
+        expr: |
+          (sum(rate(traefik_service_requests_total{service=~"app-(blue|green)@file", code=~"5.."}[30m])) or vector(0))
+          / lab:predict_availability:requests:rate30m
+      - alert: PredictAvailabilityFastBurn
+        expr: |
+          lab:predict_availability:error_ratio:rate30m > (14.4 * 0.001)
+          and lab:predict_availability:error_ratio:rate5m > (14.4 * 0.001)
+          and lab:predict_availability:requests:rate30m * 1800 >= 10
+        labels:
+          severity: page
+          slo: predict-availability
+        annotations:
+          summary: "The app's 5xx ratio is burning the 99.9% availability budget at 14.4x or faster (30 min and 5 min)."
+
+  - name: slo-latency
+    rules:
+      - record: lab:predict_latency:requests:rate5m
+        expr: sum(rate(lab_http_request_duration_seconds_count{route="/predict"}[5m]))
+      - record: lab:predict_latency:requests:rate30m
+        expr: sum(rate(lab_http_request_duration_seconds_count{route="/predict"}[30m]))
+      - record: lab:predict_latency:error_ratio:rate5m
+        expr: |
+          1 - sum(rate(lab_http_request_duration_seconds_bucket{route="/predict", le="0.1"}[5m]))
+          / lab:predict_latency:requests:rate5m
+      - record: lab:predict_latency:error_ratio:rate30m
+        expr: |
+          1 - sum(rate(lab_http_request_duration_seconds_bucket{route="/predict", le="0.1"}[30m]))
+          / lab:predict_latency:requests:rate30m
+      - alert: PredictLatencyFastBurn
+        expr: |
+          lab:predict_latency:error_ratio:rate30m > (14.4 * 0.001)
+          and lab:predict_latency:error_ratio:rate5m > (14.4 * 0.001)
+          and lab:predict_latency:requests:rate30m * 1800 >= 10
+        labels:
+          severity: page
+          slo: predict-latency
+        annotations:
+          summary: "Too many /predict requests take over 100 ms: the 99.9% latency budget is burning at 14.4x or faster (30 min and 5 min)."
